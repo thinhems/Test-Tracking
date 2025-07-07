@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Location Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #loginForm {
+            max-width: 400px;
+            margin: 100px auto;
+            text-align: center;
+        }
+        #dashboard {
+            display: none;
+        }
+        .map-container {
+            display: flex;
+            margin: 20px 0;
+        }
+        #trackingList {
+            width: 300px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-right: 20px;
+        }
+        #map {
+            flex-grow: 1;
+            height: 600px;
+            border-radius: 8px;
+        }
+        .tracking-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .tracking-item:hover {
+            background: #e9ecef;
+        }
+        .tracking-item.active {
+            background: #007bff;
+            color: white;
+        }
+        input {
+            padding: 12px;
+            margin: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        #createLink {
+            margin: 20px 0;
+        }
+        #newLink {
+            display: none;
+            margin: 20px 0;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="loginForm">
+        <h2>Admin Dashboard</h2>
+        <input type="password" id="adminPassword" placeholder="Nhập mật khẩu admin">
+        <button onclick="login()">Đăng nhập</button>
+    </div>
+
+    <div id="dashboard" class="container">
+        <h1>Location Tracker Dashboard</h1>
+        
+        <div id="createLink">
+            <button onclick="generateTrackingLink()">Tạo Link Mới</button>
+        </div>
+        
+        <div id="newLink"></div>
+
+        <div class="map-container">
+            <div id="trackingList">
+                <h3>Danh sách theo dõi</h3>
+                <!-- Tracking items will be added here -->
+            </div>
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const ADMIN_PASSWORD = '123456'; // Thay đổi mật khẩu này trong production
+        let map;
+        let markers = {};
+        let activeTrackingId = null;
+        let wsConnections = {};
+
+        function login() {
+            const password = document.getElementById('adminPassword').value;
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+                initializeMap();
+            } else {
+                alert('Mật khẩu không đúng!');
+            }
+        }
+
+        function initializeMap() {
+            map = L.map('map').setView([16.047079, 108.206230], 5); // Vị trí mặc định: Việt Nam
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        async function generateTrackingLink() {
+            try {
+                const response = await fetch('/api/generate-link', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const trackingLink = `${window.location.origin}/track/${data.trackingId}`;
+                    const linkDiv = document.getElementById('newLink');
+                    linkDiv.style.display = 'block';
+                    linkDiv.innerHTML = `
+                        <p>Link theo dõi mới:</p>
+                        <code>${trackingLink}</code>
+                        <button onclick="copyToClipboard('${trackingLink}')">Sao chép</button>
+                    `;
+                    connectToTrackingId(data.trackingId);
+                }
+            } catch (error) {
+                alert('Lỗi khi tạo link theo dõi');
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text)
+                .then(() => alert('Đã sao chép link!'))
+                .catch(() => alert('Không thể sao chép link'));
+        }
+
+        function connectToTrackingId(trackingId) {
+            if (wsConnections[trackingId]) {
+                return;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${protocol}//${window.location.host}/ws/${trackingId}`);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                updateLocation(trackingId, data);
+            };
+
+            ws.onclose = () => {
+                delete wsConnections[trackingId];
+                setTimeout(() => connectToTrackingId(trackingId), 5000);
+            };
+
+            wsConnections[trackingId] = ws;
+            addToTrackingList(trackingId);
+        }
+
+        function updateLocation(trackingId, data) {
+            // Cập nhật marker trên bản đồ
+            if (!markers[trackingId]) {
+                markers[trackingId] = L.marker([data.lat, data.lng]).addTo(map);
+            } else {
+                markers[trackingId].setLatLng([data.lat, data.lng]);
+            }
+
+            // Cập nhật thông tin trong danh sách
+            const listItem = document.getElementById(`tracking-${trackingId}`);
+            if (listItem) {
+                const timestamp = new Date(data.timestamp).toLocaleString('vi-VN');
+                listItem.querySelector('.timestamp').textContent = `Cập nhật: ${timestamp}`;
+            }
+
+            // Nếu đang theo dõi tracking ID này, cập nhật view của map
+            if (activeTrackingId === trackingId) {
+                map.setView([data.lat, data.lng], 15);
+            }
+        }
+
+        function addToTrackingList(trackingId) {
+            const trackingList = document.getElementById('trackingList');
+            
+            if (!document.getElementById(`tracking-${trackingId}`)) {
+                const div = document.createElement('div');
+                div.id = `tracking-${trackingId}`;
+                div.className = 'tracking-item';
+                div.innerHTML = `
+                    <div>ID: ${trackingId}</div>
+                    <div class="timestamp">Đang chờ vị trí...</div>
+                `;
+                div.onclick = () => {
+                    // Xóa active class từ item cũ
+                    const items = document.getElementsByClassName('tracking-item');
+                    for (let item of items) {
+                        item.classList.remove('active');
+                    }
+                    
+                    // Thêm active class cho item được chọn
+                    div.classList.add('active');
+                    activeTrackingId = trackingId;
+                    
+                    // Nếu có marker, zoom đến vị trí đó
+                    if (markers[trackingId]) {
+                        const pos = markers[trackingId].getLatLng();
+                        map.setView(pos, 15);
+                    }
+                };
+                trackingList.appendChild(div);
+            }
+        }
+
+        // Xử lý khi đóng trang
+        window.onbeforeunload = function() {
+            for (let trackingId in wsConnections) {
+                if (wsConnections[trackingId]) {
+                    wsConnections[trackingId].close();
+                }
+            }
+        };
+    </script>
+</body>
+</html> 

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tạo Link Theo Dõi</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin: 20px 0;
+        }
+        button {
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            display: none;
+        }
+        #trackingLink {
+            word-break: break-all;
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+        }
+        .copy-btn {
+            margin-top: 10px;
+            background-color: #28a745;
+        }
+        .copy-btn:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tạo Link Theo Dõi Vị Trí</h1>
+        <div class="form-group">
+            <button onclick="generateLink()">Tạo Link Mới</button>
+        </div>
+        <div id="result">
+            <h3>Link theo dõi của bạn:</h3>
+            <div id="trackingLink"></div>
+            <button class="copy-btn" onclick="copyLink()">Sao chép link</button>
+        </div>
+    </div>
+
+    <script>
+        async function generateLink() {
+            try {
+                const response = await fetch('/api/tracking', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const trackingLink = `${window.location.origin}/track/${data.trackingId}`;
+                    document.getElementById('trackingLink').textContent = trackingLink;
+                    document.getElementById('result').style.display = 'block';
+                } else {
+                    alert('Không thể tạo link theo dõi.');
+                }
+            } catch (error) {
+                alert('Đã xảy ra lỗi khi tạo link.');
+            }
+        }
+
+        function copyLink() {
+            const linkText = document.getElementById('trackingLink').textContent;
+            navigator.clipboard.writeText(linkText)
+                .then(() => {
+                    const copyBtn = document.querySelector('.copy-btn');
+                    copyBtn.textContent = 'Đã sao chép!';
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Sao chép link';
+                    }, 2000);
+                })
+                .catch(() => {
+                    alert('Không thể sao chép link.');
+                });
+        }
+    </script>
+</body>
+</html> 
