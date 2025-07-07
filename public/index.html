@@ -80,14 +80,13 @@
     <script>
         async function generateLink() {
             try {
-                const response = await fetch('/api/tracking', {
+                const response = await fetch('/api/generate-link', {
                     method: 'POST'
                 });
                 const data = await response.json();
                 
                 if (response.ok) {
-                    const trackingLink = `${window.location.origin}/track/${data.trackingId}`;
-                    document.getElementById('trackingLink').textContent = trackingLink;
+                    document.getElementById('trackingLink').textContent = data.trackingLink;
                     document.getElementById('result').style.display = 'block';
                 } else {
                     alert('Không thể tạo link theo dõi.');
